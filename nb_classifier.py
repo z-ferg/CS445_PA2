@@ -7,6 +7,8 @@ Minor modifications by: Nathan Sprague
 """
 
 import numpy as np
+from scipy.stats import norm
+import math
 
 
 class NBClassifier:
@@ -41,8 +43,8 @@ class NBClassifier:
         """
         self.smoothing_flag = smoothing_flag
         self.feature_dists = []
-        self.priors = None
-        self.classes = None
+        self.priors = dict()
+        self.classes = []
 
     def fit(self, X, X_categorical, y):
         """
@@ -73,8 +75,70 @@ class NBClassifier:
 
         # each row in training data needs a label
         assert (X.shape[0] == y.shape[0])
+        
+        # SET THE CLASSES
+        for label in y:
+            if label not in self.classes:
+                self.classes.append(label)
+        
+        # SET THE X CATEGORICAL
+        self.X_categorical = X_categorical
+        
+        # SET THE PRIORS
+        for label in y: # Set the count of each label in the priors class item
+            self.priors[label] = self.priors[label] + 1 if label in self.priors.keys() else 1
+        for label in self.priors: # Turn counts into probabilities
+            self.priors[label] = self.priors[label] / len(y)
+        
+        for feature in range(len(X_categorical)): # Iterate over the features in
+            temp = dict() # Creates dictionary for each feature
 
-        raise NotImplementedError()
+            for row in range(X.shape[0]): # Iterate over each item and set the counts
+                sample = X[row]
+    
+                if X_categorical[feature]:  # Discrete
+                    if y[row] not in temp.keys():
+                        temp[y[row]] = dict([(sample[feature], 1)])
+                    else:
+                        # Increment the count for the specific sample value for the current label
+                        if sample[feature] in temp[y[row]]:
+                            temp[y[row]][sample[feature]] += 1
+                        else:
+                            temp[y[row]][sample[feature]] = 1
+                else: #Continuous
+                    if y[row] not in temp:
+                        temp[y[row]] = []
+                    temp[y[row]].append(float(sample[feature]))
+            
+            if X_categorical[feature]: # Discrete
+                for label in temp:
+                    if self.smoothing_flag:
+                        all_vals = set()
+                        for row in range(len(X)):
+                            all_vals.add(X[row][feature])
+                        
+                        total = sum(temp[label].values()) + len(all_vals)
+                        for val in all_vals:
+                            if val not in temp[label]:
+                                temp[label][val] = 1 / total
+                            else:
+                                temp[label][val] = ((temp[label][val] + 1) / total)
+                    else:
+                        total = sum(temp[label].values())
+                        temp[label] = {val:((count)/ total) for val, count in temp[label].items()}
+            else: # Continuous
+                for label in temp:
+                    if temp[label]:
+                        mean = np.mean(temp[label])
+                        variance = np.var(temp[label], ddof=1)
+                        if variance == 0:
+                            variance = 1e-9
+                        temp[label] = (mean, variance)
+                    else:
+                        temp[label] = (None, None)
+            
+            self.feature_dists.append(temp)
+
 
     def feature_class_prob(self, feature_index, x, class_label):
         """
@@ -100,8 +164,16 @@ class NBClassifier:
         # validate class_label
         assert class_label < len(self.classes), \
             'invalid class label passed to feature_class_prob'
-
-        raise NotImplementedError()
+            
+        if(self.X_categorical[feature_index]):  # Discrete
+            return feature_dist[class_label].get(x, 0)
+        else:
+            mean, variance = feature_dist[class_label]
+            
+            if variance is not None and variance > 0:  
+                return norm.pdf(x, loc=mean, scale=np.sqrt(variance))
+            else:
+                return 1e-9
 
     def predict(self, X):
         """
@@ -117,8 +189,28 @@ class NBClassifier:
         # validate that x contains exactly the number of features
         assert (X.shape[1] == self.X_categorical.shape[0])
 
-        raise NotImplementedError()
+        return_arr = []
+        
+        for row in X:
+            label_probs = []
+            
+            for label in self.classes:
+                prob = math.log(self.priors[label])
+                
+                for item in range(len(row)):
+                    value = row[item]
+                    
+                    if not self.X_categorical[item]:
+                        value = float(value)
 
+                    temp = self.feature_class_prob(item, value, label)
+                    if temp > 0:
+                        prob += math.log(temp)
+                    else:
+                        prob += float('-inf')
+                label_probs.append(prob)
+            return_arr.append(self.classes[label_probs.index(max(label_probs))])
+        return np.array(return_arr)
 
 def nb_demo():
     # data from table Figure 4.8 in the textbook
@@ -141,13 +233,13 @@ def nb_demo():
     # class labels (default borrower)
     y = np.array([0, 0, 0, 0, 1, 0, 0, 1, 0, 1])
 
-    nb = NBClassifier(smoothing_flag=False)
+    nb = NBClassifier(smoothing_flag=True)
 
     nb.fit(X, X_categorical, y)
-
     test_pts = np.array([['No', 'Married', 120],
                          ['No', 'Divorced', 95]])
     yhat = nb.predict(test_pts)
+    print(nb.feature_class_prob(feature_index=0, x='No', class_label=0))
 
     # the book computes this as 0.0016 * alpha
     print('Predicted class for someone who is not a homeowner,')

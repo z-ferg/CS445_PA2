@@ -98,7 +98,7 @@ class Test_NB(unittest.TestCase):
         x_pt = 'Married'
         class_label = 0
         p = nb.feature_class_prob(feature_index=1, x=x_pt, class_label=class_label)
-        err_msg = "Martial status = " + x_pt + "for class " \
+        err_msg = "Martial status = " + x_pt + " for class " \
                   + str(class_label) + " wrong prob"
         if nb.smoothing_flag:
             err_msg += " with smoothing"
@@ -113,7 +113,7 @@ class Test_NB(unittest.TestCase):
         # other label
         class_label = 1
         p = nb.feature_class_prob(feature_index=1, x=x_pt, class_label=class_label)
-        err_msg = "Martial status = " + x_pt + "for class " \
+        err_msg = "Martial status = " + x_pt + " for class " \
                   + str(class_label) + " wrong prob"
         if nb.smoothing_flag:
             err_msg += " with smoothing"
